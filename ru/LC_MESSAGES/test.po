@@ -1,0 +1,26 @@
+# Russian translation for flatpak.
+# Copyright (C) 2016 flatpak's COPYRIGHT HOLDER
+# This file is distributed under the same license as the flatpak package.
+#
+# Roman Kharin <romiq.kh@gmail.com>, 2017.
+msgid ""
+msgstr ""
+"Project-Id-Version: flatpak master\n"
+"Report-Msgid-Bugs-To: https://github.com/flatpak/flatpak/issues\n"
+"POT-Creation-Date: 2019-05-28 14:57+0200\n"
+"PO-Revision-Date: 2017-02-10 11:59+0300\n"
+"Last-Translator: Roman Kharin <romiq.kh@gmail.com>\n"
+"Language-Team: romiq.kh@gmail.com\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
+"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Generator: Poedit 1.8.7.1\n"
+
+msgid "%d user."
+msgid_plural "%d users."
+msgstr[0] "%d пользователь."
+msgstr[1] "%d пользователя."
+msgstr[2] "%d пользователей."
