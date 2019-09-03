@@ -74,13 +74,19 @@
 ;;  (define _ (my-gettext 'getter))
 ;;  (_"Hello, World!")
 
-(require srfi/2 racket/function racket/sequence
+(require srfi/2 racket/function racket/sequence racket/contract
          racket/list racket/string racket/port racket/bytes racket/match)
+
+(provide/contract
+ [gettext (string? . -> . string?)]
+ [textdomain (case-> (string? . -> . procedure?)
+                     (-> string?))]
+ [ngettext (string? string? number? . -> . string?)])
 
 (provide
  ;; standard gettext interface
- gettext textdomain dgettext dcgettext bindtextdomain
- ngettext dngettext dcngettext
+ #;gettext #;textdomain dgettext dcgettext bindtextdomain
+ #;ngettext dngettext dcngettext
  ;; the parameter for the standard interface
  default-gettext-lookup
  ;; more flexible interface for building lookups
@@ -249,8 +255,8 @@
   ((make-gettext domain (list locale)) 'get msgid))
 
 ;; plural forms
-(define (ngettext . opt)
-  (apply (default-gettext-lookup) 'nget opt))
+(define (ngettext msg msg2 n)
+  ((default-gettext-lookup) 'nget msg msg2 n))
 (define (dngettext domain . opt)
   (apply (make-gettext domain) 'nget opt))
 (define (dcngettext domain msgid locale . opt)
@@ -589,30 +595,23 @@
                                       (map cons (range (length l)) l)))
                               x0))
                        (res (cons x gf)))
-                      (when cached? (hash-set! cache msg res))
-                      res)))))
+              (when cached? (hash-set! cache msg res))
+              res)))))
 
   (define (get msg)
-    (let ((res (search msg)))
-      (if res (if (pair? (car res)) (caar res) (car res)) msg)))
+    (match (search msg)
+      [(cons (cons msg _) _) msg]
+      [(cons msg _) msg]
+      [else #f]))
 
-  (define (nget msg . opt) ;; [msg2] [n]
-    (let ((msg2 #f) (n #f))
-      ;; option parsing, both optional
-      (when (pair? opt)
-        (let ((x (car opt))) (if (number? x) (set! n x) (set! msg2 x)))
-        (when (pair? (cdr opt))
-          (let ((x (cadr opt))) (if (number? x) (set! n x) (set! msg2 x)))))
-      (let ((res (search msg msg2 n)))
-        (if (pair? res)
-            (let ((plural-index (gfile-plural-index (cdr res))))
-              (or (and (procedure? plural-index)
-                       (cond
-                         ((assv (plural-index (or n 1)) (cdar res)) => cdr)
-                         (else #f)))
-                  (if (eqv? n 1) msg (caar res))))
-            (if (or (eqv? n 1) (not msg2)) msg msg2)))))
-
+  (define (nget msg msg2 n)
+    (match (search msg msg2 n)
+      [(cons (list-rest trans plurals) gfile)
+       (cond
+         [(assv ((gfile-plural-index gfile) (or n 1)) plurals) => cdr]
+         [else trans])]
+      [else (if (or (eqv? n 1) (not msg2)) msg msg2)]))
+    
   (define (set msg val) (hash-set! cache msg val))
 
   (define (reset!)
