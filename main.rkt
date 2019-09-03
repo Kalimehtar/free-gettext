@@ -78,15 +78,20 @@
          racket/list racket/string racket/port racket/bytes racket/match)
 
 (provide/contract
+ ;; standard gettext interface
  [gettext (string? . -> . string?)]
  [textdomain (case-> (string? . -> . procedure?)
                      (-> string?))]
- [ngettext (string? string? number? . -> . string?)])
+ [ngettext (string? string? number? . -> . string?)]
+ [dgettext (string? string? . -> . string?)]
+ [dcgettext (string? string? string? . -> . string?)]
+ [dngettext (string? string? string? number? . -> . string?)]
+ [dcngettext (string? string? string? number? string? . -> . string?)])
 
 (provide
  ;; standard gettext interface
- #;gettext #;textdomain dgettext dcgettext bindtextdomain
- #;ngettext dngettext dcngettext
+ #;gettext #;textdomain #;dgettext #;dcgettext bindtextdomain
+ #;ngettext #;dngettext #;dcngettext
  ;; the parameter for the standard interface
  default-gettext-lookup
  ;; more flexible interface for building lookups
@@ -245,7 +250,7 @@
 
 (define domain-message-paths (make-hash))
 
-(define default-gettext-lookup (make-parameter #f))
+(define default-gettext-lookup (make-parameter (λ _ "")))
 
 (define (gettext msgid)
   ((default-gettext-lookup) 'get msgid))
@@ -568,13 +573,13 @@
     (reverse
      (foldl
       (lambda (x res)
-        (let ((path
-               (build-path
-                (caddr x) (car x) cdir (string-append (cadr x) (cadddr x)))))
-          (if (file-read-access? path)
-              (cons (make-gettext-file path (car x)) res)
-              res)))
-      '()
+        (match x
+          [(list x1 x2 x3 x4)
+           (define path (build-path x3 x1 cdir (string-append x2 x4)))
+           (if (file-read-access? path)
+               (cons (make-gettext-file path x1) res)
+               res)]))
+      null
       (cartesian-product (list (append-map split-langs locale)
                                domain
                                dirs
@@ -643,7 +648,7 @@
 ;; take keyword arguments?
 ;; (make-gettext domain locale dirs cdir gettext-cached? lookup-cached?)
 (define gettext-lookup-cache (make-hash))
-(define (make-gettext [domain0 '("default")]
+(define (make-gettext domain0
                       [locale0 #f]
                       [dirs0 #f]
                       [cdir0 #f]
