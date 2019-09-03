@@ -1,13 +1,16 @@
 #lang scribble/manual
-@require[@for-label gettext racket/base]]
+@(require (for-label gettext racket/base))
 
 @title{gettext}
 @author+email["Roman Klochkov" "kalimehtar@mail.ru"]
 
 @defmodule[gettext]
 
-free-gettext is an implementation of GNU Gettext. It is implemented from scratch
-purely in Scheme and thus available with a BSD license. free-gettext is also easier to use,
+This package is an implementation of
+@(hyperlink "https://www.gnu.org/software/gettext/manual/gettext.html"
+            "GNU gettext").
+It is implemented from scratch
+purely in Scheme and thus available with a BSD license. It is also easier to use,
 allowing you to optionally load .po files directly without compiling them to .mo files first,
 and has many advanced features such as multi-language locales and cascaded message domains.
 
