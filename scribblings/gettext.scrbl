@@ -23,12 +23,16 @@ and has many advanced features such as multi-language locales and cascaded messa
 
 The above is the most basic usage and is equivalent to the GNU gettext module.
 
-@defproc*[([(textdomain [name (or/c string? (listof string?))]) procedure?]
+@defproc*[([(textdomain [name (or/c string? (listof string?))]
+                        [#:locale locale (or/c #f string? (listof string?)) #f]
+                        [#:dirs dirs (or/c #f path-string? (listof path-string?)) #f]
+                        [#:cdir cdir (or/c #f string?) #f]
+                        [#:cached cached? boolean? #t]
+                        [#:lookup-cached? lookup-cached? boolean? #t]) procedure?]
            [(textdomain) string?])]{
 @racket[textdomain] sets the name of the current ``domain'', which is the name of the message catalog
  (typically the name of the application). With no arguments it returns the name
- of that domain.                                          
-}
+ of that domain. For the rest arguments see @racket[make-gettext].}
 
 @defproc[(gettext [message string?]) string?]{
 @racket[gettext] then fetches the translation of the message in that domain in the current locale
@@ -119,12 +123,12 @@ for which gettext is poorly suited. Gettext assumes a single locale, but for any
 server the clients may each have their own locale. free-gettext therefore provides a way
 to generate separate first class gettext procedures.
 
-@defproc[((make-gettext [domain (or/c string? (listof string?))]
-                        [locale (or/c #f string? (listof string?)) #f]
-                        [dirs (or/c #f string? (listof string?)) #f]
-                        [cdir (or/c #f string?) #f]
-                        [cached? boolean? #t]
-                        [lookup-cached? boolean? #t])) procedure?]{
+@defproc[(make-gettext [domain (or/c string? (listof string?))]
+                       [#:locale locale (or/c #f string? (listof string?)) #f]
+                       [#:dirs dirs (or/c #f path-string? (listof path-string?)) #f]
+                       [#:cdir cdir (or/c #f string?) #f]
+                       [#:cached cached? boolean? #t]
+                       [#:lookup-cached? lookup-cached? boolean? #t]) procedure?]{
 @racket[domain] is the same as the first argument to @racket[textdomain],
  and may be similarly cascaded.
 
@@ -159,4 +163,51 @@ to generate separate first class gettext procedures.
  @item{(<self> 'getter) - returns a gettext-style procedure}
  @item{(<self> 'ngetter) - returns an ngettext-style procedure}
  @item{(<self> 'setter) - returns a procedure for manually setting message translations}]
-}
+
+@subsection{Actions}
+
+@itemlist[
+ @item{(<self> 'get <message>) => ((<self> 'getter) <message>)}
+ @item{(<self> 'nget <msg-singular> <msg-plural> <n>) =>
+  ((<self> 'ngetter) <msg-singular> <msg-plural> <n>)}
+ @item{(<self> 'set! <message> <value>) => ((<self> 'set!) <message> <value>)}]
+
+@subsection{Accessors}
+@itemlist[
+ @item{(<self> 'locale)}
+ @item{(<self> 'domain)}
+ @item{(<self> 'dirs)}
+ @item{(<self> 'files)}]
+
+@subsection{Cache management}
+@itemlist[
+ @item{(<self> 'use-cache <true-or-false>) - enable or disable message caching}
+ @item{(<self> 'clear) - clears the cache}]
+
+Note that @racket[textdomain] actually accepts all of the same parameters as @racket[make-gettext],
+so that you can specify the locale and other settings manually if you want.}
+
+@section{Quick Start Tutorial}
+
+@itemlist[
+ @item{(require gettext)}
+ @item{Replace any messages with (gettext <message>) or a shortcut.}
+ @item{Generate the .po file with the command ``xgettext myapp.rkt''.
+  @itemlist[
+    @item{If you use a shortcut its ``xgettext --keyword=_ myapp.rkt''.}
+    @item{The -a parameter will extract _all_ strings.}
+    @item{The default output is messages.po, but the -d<name> parameter overrides this.}]}
+ @item{Make a ``locale'' subdirectory tree, and move the file
+  to ``./locale/en/LC_MESSAGES/myapp.po''.}
+ @item{When testing, "export GETTEXT_PATH=./locale/" so it can access the uninstalled files.}
+ @item{Optionally, compile the .po with the "msgfmt" command.}
+ @item{Write your info.rkt file to install the locale files in /usr/share/locale/.}]
+
+@section{Why Gettext?}
+
+Because you need @emph{some} file format for your messages, and gettext is widely
+recognized and has extensive tool support.
+
+@section{License}
+
+@(hyperlink "http://synthcode.com/license.txt" "BSD")

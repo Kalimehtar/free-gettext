@@ -77,31 +77,53 @@
 (require srfi/2 racket/function racket/sequence racket/contract
          racket/list racket/string racket/port racket/bytes racket/match)
 
+(define gettext?
+  (->i ([action (or/c 'getter 'ngetter 'setter 'get 'nget 'set!
+                      'locale 'domain 'dirs 'files 'use-cache 'clear)])
+       #:rest [rest (action)
+                    (case action
+                      [(getter ngetter setter locale domain dirs files clear) null]
+                      [(get) (list/c string?)]
+                      [(nget) (list/c string? string? number?)]
+                      [(set!) (list/c string? string?)]
+                      [(use-cache) (list/c boolean?)])]
+       [result (action)
+               (case action
+                 [(getter) (string? . -> . string?)]
+                 [(ngetter) (string? string? number? . -> . string?)]
+                 [(setter) (string? string? . -> . void?)]
+                 [(locale) (listof string?)]
+                 [(domain) (listof string?)]
+                 [(dirs) (listof path-string?)]
+                 [(files) (listof gfile?)]
+                 [(clear use-cache set!) void?]
+                 [(get nget) string?])]))
+
 (provide/contract
  ;; standard gettext interface
  [gettext (string? . -> . string?)]
- [textdomain (case-> (string? . -> . procedure?)
-                     (-> string?))]
+ [textdomain (->i
+              ()
+              ([name (or/c string? (listof string?))]
+               #:locale [locale (or/c #f string? (listof string?))]
+               #:dirs [dirs (or/c #f path-string? (listof path-string?))]
+               #:cdir [cdir (or/c #f string?)]
+               #:cached? [cached? boolean?]
+               #:lookup-cached? [lookup-cached? boolean?])                            
+              [result (name) (if (unsupplied-arg? name) string? gettext?)])]
  [ngettext (string? string? number? . -> . string?)]
  [dgettext (string? string? . -> . string?)]
  [dcgettext (string? string? string? . -> . string?)]
  [dngettext (string? string? string? number? . -> . string?)]
- [dcngettext (string? string? string? number? string? . -> . string?)])
-
-(provide
- ;; standard gettext interface
- #;gettext #;textdomain #;dgettext #;dcgettext bindtextdomain
- #;ngettext #;dngettext #;dcngettext
- ;; the parameter for the standard interface
- default-gettext-lookup
- ;; more flexible interface for building lookups
- make-gettext
- ;; gfile accessors
- gfile? gfile-filename gfile-locale
- gfile-properties gfile-type gfile-plural-index
- make-gettext-file
- ;; low-level parsers
- lookup-po-message lookup-mo-message)
+ [dcngettext (string? string? string? number? string? . -> . string?)]
+ [bindtextdomain (string? string? . -> . void?)]
+ [make-gettext (->* ((or/c string? (listof string?)))
+                    (#:locale (or/c #f string? (listof string?))
+                     #:dirs (or/c #f path-string? (listof path-string?))
+                     #:cdir (or/c #f string?)
+                     #:cached? boolean?
+                     #:lookup-cached? boolean?)
+                    gettext?)])
 
 (define null-str (string (integer->char 0)))
 
@@ -214,7 +236,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; store meta info for gettext files
 
-(struct gfile (filename locale coder properties type plural-index))
+(struct gfile (filename locale coder properties type plural-index) #:transparent)
 
 (define (build-coder x)
   (define ((build coder) str)
@@ -269,12 +291,21 @@
 
 ;; bind the default domain
 (define textdomain
-  (case-lambda
-    [() ((default-gettext-lookup) 'domain)]
-    [(name)
-     (define accessor (make-gettext name))
-     (default-gettext-lookup accessor)
-     accessor]))
+  (procedure-reduce-keyword-arity
+   (make-keyword-procedure
+    (λ (kws kw-args . rest)
+      (cond
+        [(null? rest)
+         (unless (null? kws) 
+           (raise-arguments-error 'textdomain
+                                  "no keyword allowed if there is no domain name argument"
+                                  "keywords" kws))
+         ((default-gettext-lookup) 'domain)]
+        [else
+         (define accessor (keyword-apply make-gettext kws kw-args rest))
+         (default-gettext-lookup accessor)
+         accessor])))
+   '(0 1) null '(#:cached? #:cdir #:dirs #:locale #:lookup-cached?)))
 
 (define (bindtextdomain domain dirs)
   (hash-set! domain-message-paths domain (listify dirs)))
@@ -605,9 +636,9 @@
 
   (define (get msg)
     (match (search msg)
-      [(cons (cons msg _) _) msg]
-      [(cons msg _) msg]
-      [else #f]))
+      [(cons (cons trans _) _) trans]
+      [(cons trans _) trans]
+      [else msg]))
 
   (define (nget msg msg2 n)
     (match (search msg msg2 n)
@@ -649,11 +680,11 @@
 ;; (make-gettext domain locale dirs cdir gettext-cached? lookup-cached?)
 (define gettext-lookup-cache (make-hash))
 (define (make-gettext domain0
-                      [locale0 #f]
-                      [dirs0 #f]
-                      [cdir0 #f]
-                      [gettext-cached? #t]
-                      [lookup-cached? #t])
+                      #:locale [locale0 #f]
+                      #:dirs [dirs0 #f]
+                      #:cdir [cdir0 #f]
+                      #:cached? [gettext-cached? #t]
+                      #:lookup-cached? [lookup-cached? #t])
   (define domain (listify domain0))
   (define locale (listify (or locale0 (getenv "LANG") (getenv "LC_ALL") "C")))
   (define dirs1 (listify
@@ -670,20 +701,17 @@
                  (λ () (make-gettext-internal domain locale dirs cdir gettext-cached?)))
       (make-gettext-internal domain locale dirs cdir gettext-cached?)))
 
-;(define my-gettext (make-gettext "test" "ru" "."))
-;(define __ (my-gettext 'ngetter))
-
 (module+ test
   (require rackunit)
-  (let* ([mo-gettext (make-gettext "motest" "ja" ".")]
+  (let* ([mo-gettext (make-gettext "motest" #:locale "ja" #:dirs ".")]
          [ngetter (mo-gettext 'ngetter)]
          [getter (mo-gettext 'getter)])
     (check-equal? (ngetter "He was stabbed with ~A knife." "He was stabbed with ~A knives." 2)
                   "彼は~A包丁で刺された。")
     (check-equal? (ngetter "He was stabbed with ~A knife." "He was stabbed with ~A knives." 1)
                   "彼は~A包丁で刺された。")
-    (check-equal? (getter  "Help|Shrink") "Emacsの精神医学者"))
-  (let* ([ja-gettext (make-gettext "test" "ja" ".")]
+    (check-equal? (getter "Help|Shrink") "Emacsの精神医学者"))
+  (let* ([ja-gettext (make-gettext "test" #:locale "ja" #:dirs ".")]
          [ngetter (ja-gettext 'ngetter)]
          [getter (ja-gettext 'getter)])
     (check-equal? (ngetter "He was stabbed with ~A knife." "He was stabbed with ~A knives." 2)
@@ -691,7 +719,7 @@
     (check-equal? (ngetter "He was stabbed with ~A knife." "He was stabbed with ~A knives." 1)
                   "彼は~A包丁で刺された。")
     (check-equal? (getter  "Help|Shrink") "Emacsの精神医学者"))
-  (let* ([ru-gettext (make-gettext "test" "ru" ".")]
+  (let* ([ru-gettext (make-gettext "test" #:locale "ru" #:dirs ".")]
          [ngetter (ru-gettext 'ngetter)])
     (check-equal? (ngetter "%d user." "%d users." 1)
                   "%d пользователь.")
