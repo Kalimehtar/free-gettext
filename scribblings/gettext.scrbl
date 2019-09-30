@@ -47,7 +47,7 @@ Apart from actually creating the message files (which you can put off indefinite
   (define __ gettext)
   (print (__"Hello, world!")))
 
-Alternately, you could make , a prefix for all message strings:
+Alternately, you could make ``,'' a prefix for all message strings:
 
 @(racketblock
   (define-syntax unquote
@@ -79,7 +79,7 @@ As with GNU gettext, the following are provided:
          string?]
 @defproc[(dcgettext [domain (or/c string? (listof string?))]
                     [message string?]
-                    [locale string?])
+                    [category string?])
          string?]
 @defproc[(dngettext [domain (or/c string? (listof string?))]
                     [msg-singular string?]
@@ -89,7 +89,7 @@ As with GNU gettext, the following are provided:
                      [msg-singular string?]
                      [msg-plural string?]
                      [n number?]
-                     [locale string?]) string?]
+                     [category string?]) string?]
 
 These let you lookup messages in domains other than that specified by @racket[textdomain].
 This is just a clumsy way to make up for inadequacies in the traditional gettext
@@ -115,6 +115,35 @@ any message lookup these domains are searched in order.
 
 You can thus share messages freely between applications, and effectively
 have collections of message dictionaries.
+
+@section{Context support}
+
+As with @(hyperlink "https://www.gnu.org/software/gettext/manual/html_node/Contexts.html"
+                    "GNU gettext"), functions for translation with context:
+@defproc[(pgettext [msgctxt string?]
+                   [msgid string?])
+         string?]{
+Returns the translation of @racket[msgid], restricted to the context given by @racket[msgctxt].}
+
+@defproc[(dpgettext [domain string?]
+                    [msgctxt string?]
+                    [msgid string?])
+         string?]
+@defproc[(dcpgettext [domain string?]
+                     [msgctxt string?]
+                     [msgid string?]
+                     [category string?])
+         string?]{
+These are generalizations of pgettext. They behave similarly to @racket[dgettext]
+ and @racket[dcgettext], respectively.
+The @racket[domain] argument defines the translation domain. The @racket[category] argument allows to
+use another locale category than LC_MESSAGES.}
+
+@defproc[(npgettext [msgctxt string?]
+                    [msg-singular string?]
+                    [msg-plural string?]
+                    [n number?]) string?]{
+This is @racket[ngettext] wirh context.}
 
 @section{First-class Lookup Interface}
 

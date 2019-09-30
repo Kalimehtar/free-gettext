@@ -1,5 +1,5 @@
 #lang racket/base
-;; gettext.scm -- gettext superset implemented in Scheme
+;; gettext superset implemented in Scheme
 ;;
 ;; Copyright (c) 2003-2012 Alex Shinn.  All rights reserved.
 ;; BSD-style license: http://synthcode.com/license.txt
@@ -78,30 +78,35 @@
          racket/list racket/string racket/port racket/bytes racket/match)
 
 (define gettext?
-  (->i ([action (or/c 'getter 'ngetter 'setter 'get 'nget 'set!
+  (->i ([action (or/c 'getter 'ngetter 'pgetter 'setter 'get 'pget 'npget 'nget 'set!
                       'locale 'domain 'dirs 'files 'use-cache 'clear)])
        #:rest [rest (action)
                     (case action
-                      [(getter ngetter setter locale domain dirs files clear) null]
+                      [(getter ngetter pgetter npgetter setter locale domain dirs files clear) null]
                       [(get) (list/c string?)]
+                      [(pget) (list/c string? string?)]
                       [(nget) (list/c string? string? number?)]
+                      [(npget) (list/c string? string? string? number?)]
                       [(set!) (list/c string? string?)]
                       [(use-cache) (list/c boolean?)])]
        [result (action)
                (case action
                  [(getter) (string? . -> . string?)]
+                 [(pgetter) (string? string? . -> . string?)]
                  [(ngetter) (string? string? number? . -> . string?)]
+                 [(npgetter) (string? string? string? number? . -> . string?)]
                  [(setter) (string? string? . -> . void?)]
                  [(locale) (listof string?)]
                  [(domain) (listof string?)]
                  [(dirs) (listof path-string?)]
                  [(files) (listof gfile?)]
                  [(clear use-cache set!) void?]
-                 [(get nget) string?])]))
+                 [(get nget pget) string?])]))
 
 (provide/contract
  ;; standard gettext interface
  [gettext (string? . -> . string?)]
+ [pgettext (string? string? . -> . string?)]
  [textdomain (->i
               ()
               ([name (or/c string? (listof string?))]
@@ -112,6 +117,7 @@
                #:lookup-cached? [lookup-cached? boolean?])                            
               [result (name) (if (unsupplied-arg? name) string? gettext?)])]
  [ngettext (string? string? number? . -> . string?)]
+ [npgettext (string? string? string? number? . -> . string?)]
  [dgettext (string? string? . -> . string?)]
  [dcgettext (string? string? string? . -> . string?)]
  [dngettext (string? string? string? number? . -> . string?)]
@@ -125,7 +131,7 @@
                      #:lookup-cached? boolean?)
                     gettext?)])
 
-(define null-str (string (integer->char 0)))
+(define null-str (string #\nul))
 
 (define (after-prefix prefix s)
   (define s-length (bytes-length s))
@@ -155,9 +161,10 @@
               #:when (eqv? ci c))
     (+ x i)))
 
-(define (bytes-split s)
-  (define pos (index s 0 0))
-  (list (subbytes s 0 pos) (subbytes s (add1 pos))))
+(define (bytes-split-at s pos)
+  (if pos
+      (values (subbytes s 0 pos) (subbytes s (add1 pos)))
+      (values #f s)))
 
 (define (cartesian-product lol)
   (match lol
@@ -276,18 +283,26 @@
 
 (define (gettext msgid)
   ((default-gettext-lookup) 'get msgid))
+(define (pgettext context msgid)
+  ((default-gettext-lookup) 'pget context msgid))
 (define (dgettext domain msgid)
   ((make-gettext domain) 'get msgid))
-(define (dcgettext domain msgid locale)
-  ((make-gettext domain (list locale)) 'get msgid))
+(define (dcgettext domain msgid category)
+  ((make-gettext domain #:cdir category) 'get msgid))
+(define (dpgettext domain context msgid)
+  ((make-gettext domain) 'pget msgid))
+(define (dcpgettext domain context msgid category)
+  ((make-gettext domain #:cdir category) 'pget msgid))
 
 ;; plural forms
 (define (ngettext msg msg2 n)
   ((default-gettext-lookup) 'nget msg msg2 n))
-(define (dngettext domain . opt)
-  (apply (make-gettext domain) 'nget opt))
-(define (dcngettext domain msgid locale . opt)
-  (apply (make-gettext domain (list locale)) 'nget msgid opt))
+(define (dngettext domain msg msg2 n)
+  ((make-gettext domain) 'nget msg msg2 n))
+(define (dcngettext domain msgid msg msg2 n category)
+  ((make-gettext domain #:cdir category) 'nget msg msg2 n))
+(define (npgettext context msg msg2 n)
+  ((default-gettext-lookup) 'npget context msg msg2 n))
 
 ;; bind the default domain
 (define textdomain
@@ -317,8 +332,10 @@
 ;;   for development, so that you can quickly test your message
 ;;   files without compiling them to .mo files.
 
-(define (lookup-po-message file msg msg2)
+(define (lookup-po-message file msg-in msg2)
   (define qbyte (char->integer #\"))
+  (define-values (context msg) (bytes-split-at msg-in (index msg-in 4)))
+  (define current-context #f)
   (define (chop-quotes line)
     (define len (bytes-length line))
     (define len-1 (sub1 len))
@@ -354,20 +371,25 @@
   ;; read from the file if it exists
   (with-input-from-file file
     (λ ()
-      (let search ([line (read-bytes-line)])
+      (let search ([line (read-bytes-line)] [current-context #f])
         (cond
           [(eof-object? line) #f]
+          [(after-prefix #"msgctxt " line)
+           =>
+           (λ (tail)
+             (define current-context (read-str tail))
+             (search (read-bytes-line) current-context))]
           [(after-prefix #"msgid " line)
            =>
            (λ (tail)
-             (if (bytes=? (read-str tail) msg)
-                 (let lp ((line (read-bytes-line)))
+             (if (and (bytes=? (read-str tail) msg) (equal? current-context context))
+                 (let lp ([line (read-bytes-line)])
                    (cond [(eof-object? line) #f]
                          [(after-prefix #"msgid_plural " line) => (compose read-plural read-str)]
                          [(after-prefix #"msgstr " line) => read-str]
                          [else (lp (read-bytes-line))]))
-                 (search (read-bytes-line))))]
-          [else (search (read-bytes-line))])))))
+                 (search (read-bytes-line) #f)))]
+          [else (search (read-bytes-line) current-context)])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The gettext binary .mo file parser.
@@ -634,19 +656,23 @@
               (when cached? (hash-set! cache msg res))
               res)))))
 
-  (define (get msg)
-    (match (search msg)
+  (define (get msg) (pget #f msg))
+
+  (define (pget ctxt msg)
+    (match (search (if ctxt (string-append ctxt (string #\u0004) msg) msg))
       [(cons (cons trans _) _) trans]
       [(cons trans _) trans]
       [else msg]))
 
-  (define (nget msg msg2 n)
-    (match (search msg msg2 n)
+  (define (npget ctxt msg msg2 n)
+    (match (search (if ctxt (string-append ctxt (string #\u0004) msg) msg) msg2 n)
       [(cons (list-rest trans plurals) gfile)
        (cond
          [(assv ((gfile-plural-index gfile) (or n 1)) plurals) => cdr]
          [else trans])]
       [else (if (or (eqv? n 1) (not msg2)) msg msg2)]))
+
+  (define (nget msg msg2 n) (npget #f msg msg2 n))
     
   (define (set msg val) (hash-set! cache msg val))
 
@@ -660,10 +686,14 @@
       ((searcher) search)
       ((getter) get)
       ((ngetter) nget)
+      ((npgetter) npget)
+      ((pgetter) pget)
       ((setter) set)
       ((search) (apply search args))
       ((get) (apply get args))
+      ((pget) (apply pget args))
       ((nget) (apply nget args))
+      ((npget) (apply npget args))
       ((set!) (apply set args))
       ((locale) locale)
       ((domain) domain)
@@ -720,10 +750,15 @@
                   "彼は~A包丁で刺された。")
     (check-equal? (getter  "Help|Shrink") "Emacsの精神医学者"))
   (let* ([ru-gettext (make-gettext "test" #:locale "ru" #:dirs ".")]
-         [ngetter (ru-gettext 'ngetter)])
+         [ngetter (ru-gettext 'ngetter)]
+         [pgetter (ru-gettext 'pgetter)])
     (check-equal? (ngetter "%d user." "%d users." 1)
                   "%d пользователь.")
     (check-equal? (ngetter "%d user." "%d users." 2)
                   "%d пользователя.")
     (check-equal? (ngetter "%d user." "%d users." 5)
-                  "%d пользователей.")))
+                  "%d пользователей.")
+    (check-equal? (pgetter "First letter in 'Scope'" "S")
+                  "О")
+    (check-equal? (pgetter "South" "S")
+                  "Ю")))

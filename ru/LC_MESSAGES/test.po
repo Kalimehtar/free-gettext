@@ -24,3 +24,13 @@ msgid_plural "%d users."
 msgstr[0] "%d пользователь."
 msgstr[1] "%d пользователя."
 msgstr[2] "%d пользователей."
+
+#: tools/observinglist.cpp:700
+msgctxt "First letter in 'Scope'"
+msgid "S"
+msgstr "О"
+
+#: skycomponents/horizoncomponent.cpp:429
+msgctxt "South"
+msgid "S"
+msgstr "Ю"
