@@ -143,7 +143,7 @@ use another locale category than LC_MESSAGES.}
                     [msg-singular string?]
                     [msg-plural string?]
                     [n number?]) string?]{
-This is @racket[ngettext] wirh context.}
+This is @racket[ngettext] with context.}
 
 @section{First-class Lookup Interface}
 
