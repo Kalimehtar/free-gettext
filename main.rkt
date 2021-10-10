@@ -299,7 +299,7 @@
   ((default-gettext-lookup) 'nget msg msg2 n))
 (define (dngettext domain msg msg2 n)
   ((make-gettext domain) 'nget msg msg2 n))
-(define (dcngettext domain msgid msg msg2 n category)
+(define (dcngettext domain msg msg2 n category)
   ((make-gettext domain #:cdir category) 'nget msg msg2 n))
 (define (npgettext context msg msg2 n)
   ((default-gettext-lookup) 'npget context msg msg2 n))
@@ -325,6 +325,9 @@
 (define (bindtextdomain domain dirs)
   (hash-set! domain-message-paths domain (listify dirs)))
 
+(define (read-bytes-line* [in (current-input-port)] [mode 'any])
+  (read-bytes-line in mode))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The gettext .po parser.
 ;;   We sequentially scan all the .po msgstr entries until the one
@@ -339,17 +342,18 @@
   (define (chop-quotes line)
     (define len (bytes-length line))
     (define len-1 (sub1 len))
-    (and (>= len 2)
-         (= qbyte (bytes-ref line 0))
-         (= qbyte (bytes-ref line len-1))
-         (subbytes line 1 len-1)))
+    (if (and (>= len 2)
+             (= qbyte (bytes-ref line 0))
+             (= qbyte (bytes-ref line len-1)))
+        (subbytes line 1 len-1)
+        (error 'chop-quotes "Expected string in quotes, got: ~a" line)))
 
   (define (read-str default)
     (bytes-append*
      (chop-quotes default)
      (sequence->list
       (in-producer (λ () (and (eqv? (peek-byte) qbyte)
-                              (chop-quotes (bytes-trim (read-bytes-line)))))
+                              (chop-quotes (bytes-trim (read-bytes-line*)))))
                    #f))))
 
   (define bbyte (char->integer #\]))
@@ -365,31 +369,31 @@
     (list* default
            (sequence->list
             (in-producer (λ () (and (eqv? (peek-byte) mbyte)
-                                    (read-plural-line (after-prefix #"msgstr[" (read-bytes-line)))))
+                                    (read-plural-line (after-prefix #"msgstr[" (read-bytes-line*)))))
                          #f))))
 
   ;; read from the file if it exists
   (with-input-from-file file
     (λ ()
-      (let search ([line (read-bytes-line)] [current-context #f])
+      (let search ([line (read-bytes-line*)] [current-context #f])
         (cond
           [(eof-object? line) #f]
           [(after-prefix #"msgctxt " line)
            =>
            (λ (tail)
              (define current-context (read-str tail))
-             (search (read-bytes-line) current-context))]
+             (search (read-bytes-line*) current-context))]
           [(after-prefix #"msgid " line)
            =>
            (λ (tail)
              (if (and (bytes=? (read-str tail) msg) (equal? current-context context))
-                 (let lp ([line (read-bytes-line)])
+                 (let lp ([line (read-bytes-line*)])
                    (cond [(eof-object? line) #f]
                          [(after-prefix #"msgid_plural " line) => (compose read-plural read-str)]
                          [(after-prefix #"msgstr " line) => read-str]
-                         [else (lp (read-bytes-line))]))
-                 (search (read-bytes-line) #f)))]
-          [else (search (read-bytes-line) current-context)])))))
+                         [else (lp (read-bytes-line*))]))
+                 (search (read-bytes-line*) #f)))]
+          [else (search (read-bytes-line*) current-context)])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The gettext binary .mo file parser.
