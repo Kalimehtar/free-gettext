@@ -723,7 +723,7 @@
   (define locale (listify (or locale0 (getenv "LANG") (getenv "LC_ALL") "C")))
   (define dirs1 (listify
                  (or dirs0 (cond [(getenv "GETTEXT_PATH")
-                                  => (λ (x) string-split x ":")]
+                                  => (λ (x) (string-split x ":"))]
                                  [else null]))))
   ;; prepend default dirs based on domain
   (define dirs (append (hash-ref domain-message-paths domain message-path) dirs1))
